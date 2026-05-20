@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="zh-Hans">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>482/SID Employer Radar</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">482</div>
+          <div>
+            <h1>雇主情报雷达</h1>
+            <p>SID Lead CRM</p>
+          </div>
+        </div>
+
+        <section class="panel metrics-panel">
+          <div class="metric-row">
+            <span>今日队列</span>
+            <strong id="metric-total">0</strong>
+          </div>
+          <div class="metric-row">
+            <span>A 级</span>
+            <strong id="metric-a">0</strong>
+          </div>
+          <div class="metric-row">
+            <span>待联系</span>
+            <strong id="metric-contact">0</strong>
+          </div>
+          <div class="metric-row">
+            <span>最后运行</span>
+            <strong id="metric-run">--</strong>
+          </div>
+        </section>
+
+        <section class="panel action-panel">
+          <button class="primary" data-action="daily-run">运行今日雷达</button>
+          <button data-action="sync-seeds">同步482种子</button>
+          <button data-action="discover-jobs">职位发现</button>
+          <button data-action="enrich-companies">补全公司信息</button>
+          <button data-action="score-leads">重新评分</button>
+          <button id="export-button">导出外联CSV</button>
+        </section>
+
+        <section class="panel import-panel">
+          <label for="seed-file">导入种子CSV</label>
+          <input id="seed-file" type="file" accept=".csv,text/csv">
+          <button id="import-button">导入</button>
+        </section>
+
+        <section class="panel source-panel">
+          <h2>源策略</h2>
+          <div id="source-policies" class="source-list"></div>
+        </section>
+      </aside>
+
+      <main class="workspace">
+        <header class="topbar">
+          <div>
+            <h2>今日 Lead Queue</h2>
+            <p id="status-line">正在载入</p>
+          </div>
+          <div class="filters">
+            <select id="bucket-filter" aria-label="优先级">
+              <option value="all">全部优先级</option>
+              <option value="A">A 级</option>
+              <option value="B">B 级</option>
+              <option value="C">C 级</option>
+              <option value="D">D 级</option>
+            </select>
+            <select id="status-filter" aria-label="审核状态">
+              <option value="all">全部状态</option>
+              <option value="new">新线索</option>
+              <option value="queued">已入队</option>
+              <option value="contacted">已联系</option>
+              <option value="paused">暂缓</option>
+              <option value="rejected">放弃</option>
+            </select>
+            <input id="search-input" type="search" placeholder="公司 / 地区 / 职位">
+          </div>
+        </header>
+
+        <section class="content-grid">
+          <div class="lead-list" id="lead-list"></div>
+
+          <section class="detail-panel" id="lead-detail">
+            <div class="empty-state">选择一条 lead</div>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <script src="radar-engine.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
