@@ -37,6 +37,14 @@
         </section>
 
         <section class="panel action-panel">
+          <label class="control-label" for="region-input">目标地区</label>
+          <input id="region-input" class="region-input" type="text" value="NSW" placeholder="例如 NSW / Griffith / Mildura">
+          <div class="source-toggle-group" aria-label="平台来源">
+            <label><input type="checkbox" name="source-platform" value="Seek" checked> Seek</label>
+            <label><input type="checkbox" name="source-platform" value="Indeed" checked> Indeed</label>
+            <label><input type="checkbox" name="source-platform" value="CareerOne" checked> CareerOne</label>
+            <label><input type="checkbox" name="source-platform" value="Jora" checked> Jora</label>
+          </div>
           <button class="primary" data-action="daily-run">运行今日雷达</button>
           <button data-action="sync-seeds">同步482种子</button>
           <button data-action="discover-jobs">职位发现</button>
@@ -82,6 +90,10 @@
             <input id="search-input" type="search" placeholder="公司 / 地区 / 职位">
           </div>
         </header>
+
+        <section class="notice-strip">
+          GitHub Pages 版本不会绕过平台限制自动爬 SEEK/Indeed/CareerOne/Jora。它会按地区生成待复核平台候选、支持导入你已有的提醒邮件/CSV/人工复核结果，并输出第一张图那种表格。
+        </section>
 
         <section class="content-grid">
           <div class="lead-list" id="lead-list"></div>
