@@ -16,7 +16,9 @@ const els = {
   sourcePolicies: document.querySelector('#source-policies'),
   seedFile: document.querySelector('#seed-file'),
   importButton: document.querySelector('#import-button'),
-  exportButton: document.querySelector('#export-button')
+  exportButton: document.querySelector('#export-button'),
+  regionInput: document.querySelector('#region-input'),
+  sourcePlatformInputs: Array.from(document.querySelectorAll('input[name="source-platform"]'))
 };
 
 function formatDate(value) {
@@ -107,12 +109,28 @@ async function loadState() {
     appMode = 'static';
   }
   if (!selectedLeadId && appState.lead_scores[0]) selectedLeadId = appState.lead_scores[0].lead_id;
+  els.regionInput.value = appState.meta.search_region || els.regionInput.value || 'NSW';
+  els.sourcePlatformInputs.forEach((input) => {
+    input.checked = (appState.meta.search_sources || ['Seek', 'Indeed', 'CareerOne', 'Jora']).includes(input.value);
+  });
   els.statusLine.textContent = appMode === 'server' ? '已载入 Mac mini 模式' : '已载入 GitHub Pages 模式';
   render();
 }
 
+function selectedSources() {
+  const sources = els.sourcePlatformInputs.filter((input) => input.checked).map((input) => input.value);
+  return sources.length ? sources : ['Seek', 'Indeed', 'CareerOne', 'Jora'];
+}
+
 async function runAction(action, payload = {}) {
   els.statusLine.textContent = '处理中';
+  if (action === 'daily-run') {
+    payload = {
+      ...payload,
+      region: els.regionInput.value.trim() || 'NSW',
+      sources: selectedSources()
+    };
+  }
   let result;
   if (appMode === 'server') {
     try {
@@ -175,6 +193,14 @@ function getLeadBundle(lead) {
   return { lead, employer, job, location, contacts };
 }
 
+function progressLabel(lead, job) {
+  if (lead.review_status === 'queued') return '已入队';
+  if (lead.review_status === 'contacted') return '已联系';
+  if (lead.review_status === 'paused') return '暂缓';
+  if (lead.review_status === 'rejected') return '放弃';
+  return job.progress || '未联系';
+}
+
 function filteredLeads() {
   const bucket = els.bucketFilter.value;
   const status = els.statusFilter.value;
@@ -185,7 +211,7 @@ function filteredLeads() {
     if (bucket !== 'all' && lead.priority_bucket !== bucket) return false;
     if (status !== 'all' && lead.review_status !== status) return false;
     if (!query) return true;
-    const haystack = [employer.legal_name, job.title, location.suburb, location.postcode, lead.priority_bucket]
+    const haystack = [employer.legal_name, job.title, location.suburb, location.postcode, location.state, job.source_name, lead.priority_bucket]
       .filter(Boolean)
       .join(' ')
       .toLowerCase();
@@ -225,26 +251,57 @@ function renderLeadList() {
     return;
   }
 
-  els.leadList.innerHTML = leads.map((lead) => {
+  const rows = leads.map((lead, index) => {
     const { employer, job, location } = getLeadBundle(lead);
     const active = lead.lead_id === selectedLeadId ? ' active' : '';
+    const contacts = appState.contacts.filter((item) => item.employer_id === employer.employer_id);
+    const contact = contacts[0] || {};
+    const phone = contact.phone || employer.main_phone || '';
+    const email = contact.email || employer.main_email || (contact.contact_type === 'generic_email' ? contact.value : '');
+    const address = location.address_raw || [location.suburb, location.state, location.postcode].filter(Boolean).join(' ');
     return `
-      <article class="lead-row${active}" data-lead-id="${escapeHtml(lead.lead_id)}">
-        <div class="score bucket-${escapeHtml(lead.priority_bucket)}">${lead.final_score}</div>
-        <div class="lead-main">
-          <div class="lead-title">${escapeHtml(employer.legal_name)}</div>
-          <div class="lead-subtitle">${escapeHtml(job.title)} · ${escapeHtml(location.suburb || job.location_text)} ${escapeHtml(location.postcode || '')}</div>
-        </div>
-        <div class="pill-stack">
-          <span class="pill ${pillClass(lead.priority_bucket)}">${escapeHtml(lead.priority_bucket)} 级</span>
-          <span class="pill ${pillClass(lead.sponsorship_level)}">${escapeHtml(lead.sponsorship_level)}</span>
-          <span class="pill ${pillClass(lead.priority_region_tier)}">${escapeHtml(lead.priority_region_tier)}</span>
-        </div>
-      </article>
+      <tr class="${active}" data-lead-id="${escapeHtml(lead.lead_id)}">
+        <td>${index + 1}</td>
+        <td class="table-company">${escapeHtml(employer.legal_name)}</td>
+        <td>${escapeHtml((job.seen_date || '').slice(0, 10).replaceAll('-', '/'))}</td>
+        <td><span class="pill blue">${escapeHtml(location.state || '--')}</span></td>
+        <td>${escapeHtml(address)}</td>
+        <td>${escapeHtml(job.anzsco_code || lead.occupation_match?.anzsco_code || '')}</td>
+        <td>${escapeHtml(job.title)}</td>
+        <td><span class="platform-badge">${escapeHtml(job.source_name || '--')}</span></td>
+        <td><span class="progress-badge">${escapeHtml(progressLabel(lead, job))}</span></td>
+        <td class="table-note" title="${escapeHtml(job.notes || job.raw_snippet || '')}">${escapeHtml(job.notes || job.raw_snippet || '')}</td>
+        <td>${escapeHtml(phone)}</td>
+        <td>${escapeHtml(email)}</td>
+        <td>${job.ad_screenshot ? `<a href="${escapeHtml(job.ad_screenshot)}" target="_blank" rel="noreferrer">截图</a>` : '待补'}</td>
+      </tr>
     `;
   }).join('');
 
-  els.leadList.querySelectorAll('.lead-row').forEach((row) => {
+  els.leadList.innerHTML = `
+    <table class="lead-table">
+      <thead>
+        <tr>
+          <th></th>
+          <th>公司名称</th>
+          <th>搜索日期</th>
+          <th>所在地区</th>
+          <th>公司地址</th>
+          <th>ANZSCO</th>
+          <th>招聘岗位（已确认符合CSOL清单要求）</th>
+          <th>获取招聘信息平台</th>
+          <th>目前进展</th>
+          <th>备注</th>
+          <th>联系方式</th>
+          <th>邮箱</th>
+          <th>广告截图</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+
+  els.leadList.querySelectorAll('tr[data-lead-id]').forEach((row) => {
     row.addEventListener('click', () => {
       selectedLeadId = row.dataset.leadId;
       render();
@@ -316,6 +373,16 @@ function renderDetail() {
           <div class="field"><span>来源</span><strong>${escapeHtml(job.source_name || '--')} · ${sourceLink}</strong></div>
           <div class="field"><span>薪资 / 类型</span><strong>${escapeHtml(job.salary_text || '--')}</strong></div>
           <div class="field"><span>发布时间</span><strong>${formatDate(job.posted_date || job.seen_date)}</strong></div>
+        </div>
+      </section>
+
+      <section>
+        <div class="section-title">表格字段</div>
+        <div class="info-grid">
+          <div class="field"><span>ANZSCO</span><strong>${escapeHtml(job.anzsco_code || occupation.anzsco_code || '--')}</strong></div>
+          <div class="field"><span>目前进展</span><strong>${escapeHtml(progressLabel(lead, job))}</strong></div>
+          <div class="field"><span>备注</span><strong>${escapeHtml(job.notes || job.raw_snippet || '--')}</strong></div>
+          <div class="field"><span>广告截图</span><strong>${job.ad_screenshot ? `<a href="${escapeHtml(job.ad_screenshot)}" target="_blank" rel="noreferrer">打开截图</a>` : '待补'}</strong></div>
         </div>
       </section>
 
