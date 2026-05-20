@@ -134,6 +134,39 @@ textarea {
   gap: 9px;
 }
 
+.control-label {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--muted);
+}
+
+.region-input {
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 10px;
+  background: #fff;
+}
+
+.source-toggle-group {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.source-toggle-group label {
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 8px;
+  font-size: 13px;
+  background: #fff;
+}
+
 button,
 .button-link {
   min-height: 38px;
@@ -270,14 +303,101 @@ button.danger {
 
 .content-grid {
   display: grid;
-  grid-template-columns: minmax(360px, 0.92fr) minmax(420px, 1.08fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
   align-items: start;
 }
 
 .lead-list {
-  display: grid;
-  gap: 10px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: var(--shadow);
+}
+
+.notice-strip {
+  margin-bottom: 14px;
+  border: 1px solid #d8c99f;
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: #59410a;
+  background: #fff8e5;
+  font-size: 13px;
+}
+
+.lead-table {
+  width: 100%;
+  min-width: 1600px;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.lead-table th,
+.lead-table td {
+  border-bottom: 1px solid var(--line);
+  border-right: 1px solid var(--line);
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.lead-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #f8faf9;
+  color: var(--muted);
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.lead-table tr {
+  cursor: pointer;
+}
+
+.lead-table tr:hover,
+.lead-table tr.active {
+  background: #f4faf7;
+}
+
+.lead-table a {
+  color: #2266d4;
+  text-decoration: none;
+}
+
+.table-company {
+  font-weight: 800;
+  color: #2867d9;
+}
+
+.platform-badge,
+.progress-badge {
+  display: inline-flex;
+  min-height: 22px;
+  align-items: center;
+  border-radius: 999px;
+  padding: 3px 8px;
+  font-weight: 800;
+  font-size: 12px;
+  background: #f1e4cc;
+  color: #7a4c0b;
+}
+
+.progress-badge {
+  background: var(--blue-2);
+  color: var(--blue);
+}
+
+.table-note {
+  max-width: 260px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.detail-panel {
+  margin-top: 16px;
 }
 
 .lead-row {
