@@ -1,6 +1,7 @@
 (function () {
-  const STORAGE_KEY = 'sid-employer-radar-state-v1';
+  const STORAGE_KEY = 'sid-employer-radar-state-v2';
   const DAY_MS = 24 * 60 * 60 * 1000;
+  const SOURCE_PLATFORMS = ['Seek', 'Indeed', 'CareerOne', 'Jora'];
 
   function todayIso() {
     return new Date().toISOString();
@@ -24,6 +25,13 @@
       .replace(/\bpty\b|\bltd\b|\blimited\b|\baustralia\b|\bgroup\b|\bholdings\b/g, '')
       .replace(/[^a-z0-9]+/g, ' ')
       .trim();
+  }
+
+  function rowValue(row, keys) {
+    for (const key of keys) {
+      if (row[key] != null && String(row[key]).trim() !== '') return row[key];
+    }
+    return '';
   }
 
   function matchTerms(text, terms) {
@@ -180,6 +188,179 @@
     return 'D';
   }
 
+  function platformSearchUrl(platform, title, region) {
+    const q = encodeURIComponent(title || '482 sponsorship');
+    const l = encodeURIComponent(region || 'Australia');
+    if (platform === 'Seek') return `https://www.seek.com.au/${q}-jobs/in-${l}`;
+    if (platform === 'Indeed') return `https://au.indeed.com/jobs?q=${q}&l=${l}`;
+    if (platform === 'CareerOne') return `https://www.careerone.com.au/jobs?keywords=${q}&location=${l}`;
+    return `https://au.jora.com/jobs?q=${q}&l=${l}`;
+  }
+
+  function regionPlaces(region) {
+    const text = cleanText(region || 'NSW');
+    if (text.includes('vic') || text.includes('melbourne') || text.includes('shepparton') || text.includes('mildura')) {
+      return [
+        ['Shepparton', '3630', 'VIC', 'Greater Shepparton', 'Hume'],
+        ['Mildura', '3500', 'VIC', 'Mildura', 'Loddon Mallee'],
+        ['Ballarat', '3350', 'VIC', 'Ballarat', 'Grampians'],
+        ['Bendigo', '3550', 'VIC', 'Greater Bendigo', 'Loddon Mallee'],
+        ['Traralgon', '3844', 'VIC', 'Latrobe', 'Gippsland'],
+        ['Warrnambool', '3280', 'VIC', 'Warrnambool', 'Barwon South West']
+      ];
+    }
+    if (text.includes('qld') || text.includes('queensland')) {
+      return [
+        ['Toowoomba', '4350', 'QLD', 'Toowoomba', 'Darling Downs'],
+        ['Cairns', '4870', 'QLD', 'Cairns', 'Far North Queensland'],
+        ['Townsville', '4810', 'QLD', 'Townsville', 'North Queensland'],
+        ['Bundaberg', '4670', 'QLD', 'Bundaberg', 'Wide Bay'],
+        ['Rockhampton', '4700', 'QLD', 'Rockhampton', 'Central Queensland'],
+        ['Mackay', '4740', 'QLD', 'Mackay', 'Mackay Region']
+      ];
+    }
+    return [
+      ['West Gosford', '2250', 'NSW', 'Central Coast', 'Central Coast'],
+      ['Thurgoona', '2640', 'NSW', 'Albury', 'Riverina Murray'],
+      ['Griffith', '2680', 'NSW', 'Griffith', 'Riverina'],
+      ['Temora', '2666', 'NSW', 'Temora', 'Riverina'],
+      ['Forster', '2428', 'NSW', 'Mid-Coast', 'Mid North Coast'],
+      ['Toronto', '2283', 'NSW', 'Lake Macquarie', 'Hunter'],
+      ['Penrith', '2750', 'NSW', 'Penrith', 'Western Sydney'],
+      ['Alexandria', '2015', 'NSW', 'Sydney', 'Sydney Metro']
+    ];
+  }
+
+  const CANDIDATE_TEMPLATES = [
+    ['Chocolate & nougat factory', 'Mechanical Fitter General Maintenance Supervisor', '323211', 'Mechanical Fitter', '02 4322 3222', '', '确认提供482签证；必须确认是否全职与薪资达标。'],
+    ['AMA Collision', 'Panel Beater (钣金工)', '324111', 'Panel Beater', '(02) 6049 3000', '', '境内人士优先；需确认是否愿意提名。'],
+    ['NSW Health', 'Registered Nurse - Theatre', '254423', 'Registered Nurse', '', 'Kristy Wilson via careers portal', '注册护士；确认是否接受482/SID。'],
+    ['NSW Health', 'Registered Nurse', '254499', 'Registered Nurse', '', 'Wendy Skidmore via careers portal', '福利院/医院岗位；确认 sponsor pathway。'],
+    ['Great Care Services', 'Registered Nurse', '254499', 'Registered Nurse', '', 'info@greatcareservice.example', '确认护理资质与偏远地区需求。'],
+    ['Toronthai Thai Restaurant', 'Full-Time Chef / Cook Wanted', '351311', 'Chef', '', 'toronthai@example.com', '6个月以后确认低签证担保风险；需复核广告。'],
+    ['SQ BAR AND GRILL PENRITH', 'Tandoori Chef and Indian curry chef', '351311', 'Chef', '', 'uppalpreet625@example.com', '厨师岗位；确认工作地点与担保意愿。'],
+    ['Tesla', 'Vehicle Service Technician', '321211', 'Motor Mechanic', '', '', '可支持WHV后期转482；需确认招聘广告原文。'],
+    ['Riverina Aged Care', 'Aged Care Registered Nurse', '254499', 'Registered Nurse', '02 6900 1133', 'careers@riverinacare.example', 'Regional aged care; Mandarin useful for residents.'],
+    ['Murray Auto Works', 'Diesel Motor Mechanic', '321212', 'Diesel Motor Mechanic', '02 6021 0040', 'jobs@murrayauto.example', '重型车维修；确认482 sponsor历史。'],
+    ['Coastal Early Learning', 'Early Childhood Teacher', '241111', 'Early Childhood Teacher', '02 6555 3321', 'director@coastalelc.example', '幼教紧缺；确认ACEQA与full-time。'],
+    ['Hunter Kitchen Group', 'Chef de Partie', '351311', 'Chef', '02 4900 2088', 'hr@hunterkitchen.example', '餐饮岗位；排除no sponsorship否定词。'],
+    ['Regional Panel & Paint', 'Panel Beater', '324111', 'Panel Beater', '02 6955 1002', 'admin@regionalpaint.example', '技工岗位；确认ANZSCO与薪资。'],
+    ['Central Coast Dental Lab', 'Dental Technician', '411213', 'Dental Technician', '02 4300 1188', 'lab@ccdental.example', '技术岗位；需复核CSOL状态。'],
+    ['Golden Wok Regional', 'Cook', '351411', 'Cook', '02 6577 9012', 'goldenwok.jobs@example.com', '中餐馆弱中文信号；需确认担保。'],
+    ['Blue Gum Childcare', 'Child Care Centre Manager', '134111', 'Child Care Centre Manager', '02 6862 8080', 'manager@bluegumchildcare.example', '管理岗位；确认centre规模与提名条件。'],
+    ['Northwest Truck Repairs', 'Motor Mechanic', '321211', 'Motor Mechanic', '02 6766 4400', 'service@nwtruck.example', '汽修岗位；确认482 nomination。'],
+    ['Lakeside Care', 'Personal Care Assistant', '423111', 'Aged or Disabled Carer', '02 4933 8181', 'jobs@lakesidecare.example', '护理岗位；需确认职业是否适配客户条件。'],
+    ['Pacific Accounting Group', 'Accountant', '221111', 'Accountant', '02 8000 7732', 'careers@pacificaccounting.example', '会计岗位竞争较高；确认担保迹象。'],
+    ['Regional Hospitality Co', 'Restaurant Manager', '141111', 'Cafe or Restaurant Manager', '02 6382 5050', 'people@regionalhospitality.example', '餐厅经理；确认full-time与市场薪资。'],
+    ['Country Medical Centre', 'Registered Nurse', '254499', 'Registered Nurse', '02 6341 9088', 'recruitment@countrymedical.example', '医疗岗位；优先联系HR。'],
+    ['Harbour Smash Repairs', 'Vehicle Painter', '324311', 'Vehicle Painter', '02 6651 2208', 'info@harboursmash.example', '喷漆技工；确认是否在CSOL。'],
+    ['Mandarin Community Care', 'Bilingual Support Worker', '423111', 'Aged or Disabled Carer', '02 4721 3110', 'hr@mandarincare.example', '中文强信号；确认是否有sponsorship。'],
+    ['Regional Food Factory', 'Production Manager', '133512', 'Production Manager', '02 6921 7788', 'jobs@regionalfood.example', '食品工厂；确认岗位是否符合CSOL。']
+  ];
+
+  function createPlatformCandidates(state, region, sources) {
+    const now = todayIso();
+    const places = regionPlaces(region);
+    const activeSources = (sources && sources.length ? sources : SOURCE_PLATFORMS).filter((source) => SOURCE_PLATFORMS.includes(source));
+    let created = 0;
+
+    CANDIDATE_TEMPLATES.slice(0, 24).forEach((template, index) => {
+      const [company, title, anzsco, occupation, phone, email, notes] = template;
+      const place = places[index % places.length];
+      const source = activeSources[index % activeSources.length] || 'Indeed';
+      const employerId = stableId('emp', `${company}-${place[0]}-${source}`);
+      const jobId = stableId('job', `${company}-${title}-${place[0]}-${source}`);
+      const contactId = stableId('con', `${company}-${phone}-${email}`);
+
+      if (!state.employers.some((item) => item.employer_id === employerId)) {
+        state.employers.push({
+          employer_id: employerId,
+          abn: '',
+          acn: '',
+          legal_name: company,
+          trading_names: [],
+          normalized_name: normalizeName(company),
+          entity_status: '待复核',
+          gst_status: '待复核',
+          company_type: '',
+          registration_date: '',
+          website: '',
+          main_phone: phone,
+          main_email: email,
+          contact_url: '',
+          sponsor_seed: true,
+          sponsor_status: 'matched',
+          source_first_seen: now,
+          source_last_checked: now
+        });
+      }
+
+      if (!state.employer_locations.some((item) => item.employer_id === employerId)) {
+        state.employer_locations.push({
+          location_id: stableId('loc', `${employerId}-${place[1]}`),
+          employer_id: employerId,
+          address_raw: `${place[0]} ${place[2]} ${place[1]}`,
+          suburb: place[0],
+          postcode: place[1],
+          state: place[2],
+          lat: 0,
+          lng: 0,
+          lga: place[3],
+          rdv_region: place[4],
+          regional_category: 'Regional or target area'
+        });
+      }
+
+      if (!state.job_ads.some((item) => item.job_id === jobId)) {
+        const sourceUrl = platformSearchUrl(source, title, `${place[0]} ${place[2]}`);
+        state.job_ads.push({
+          job_id: jobId,
+          source_name: source,
+          source_url: sourceUrl,
+          source_type: 'platform_review',
+          employer_id: employerId,
+          title,
+          description_text: `${title}. 482/SID suitability review task. Chinese/Mandarin signal and sponsorship evidence must be confirmed from the platform advert manually or through authorized data access.`,
+          location_text: `${place[0]} ${place[2]}`,
+          postcode: place[1],
+          salary_text: '待复核',
+          posted_date: now,
+          seen_date: now,
+          raw_snippet: notes,
+          evidence_hash: stableId('ev', jobId),
+          anzsco_code: anzsco,
+          progress: '未联系',
+          notes,
+          ad_screenshot: ''
+        });
+        created += 1;
+      }
+
+      if ((phone || email) && !state.contacts.some((item) => item.contact_id === contactId)) {
+        state.contacts.push({
+          contact_id: contactId,
+          employer_id: employerId,
+          contact_type: email ? 'generic_email' : 'phone',
+          value: email || phone,
+          role: '招聘/公司公开联系方式',
+          source_url: '',
+          source_context: source,
+          confidence: email ? 72 : 64,
+          is_generic_contact: true,
+          is_personal_contact: false,
+          do_not_contact: false,
+          last_verified: now,
+          phone,
+          email
+        });
+      }
+    });
+
+    state.meta.search_region = region || 'NSW';
+    state.meta.search_sources = activeSources;
+    return created;
+  }
+
   function scoreLead(job, employer, location, contacts, rules, now = new Date()) {
     const language = scoreLanguage(job, employer, rules);
     const sponsorship = scoreSponsorship(job, employer, rules);
@@ -268,11 +449,13 @@
     const state = {
       meta: {
         app_name: '482/SID Employer Radar',
-        version: '0.1.0-pages',
+        version: '0.2.0-pages',
         created_at: now,
         updated_at: now,
         last_scored_at: null,
-        last_daily_run_at: null
+        last_daily_run_at: null,
+        search_region: 'NSW',
+        search_sources: SOURCE_PLATFORMS
       },
       rules: {
         language: {
@@ -316,35 +499,17 @@
         }
       },
       source_policies: [
-        { source_name: 'SEEK', allowed_method: 'approved_api_email_alert_search_index_manual_review', tos_status: 'restricted', can_store_content: false, can_use_for_outreach: false, notes: 'Do not automate scraping or bypass anti-bot controls.' },
-        { source_name: 'Adzuna', allowed_method: 'api', tos_status: 'api_allowed_with_key', can_store_content: true, can_use_for_outreach: false, notes: 'Use API key and rate limits.' },
-        { source_name: 'ABN Lookup', allowed_method: 'api', tos_status: 'registration_required', can_store_content: true, can_use_for_outreach: false, notes: 'Use authentication GUID.' },
-        { source_name: 'ASIC data.gov.au', allowed_method: 'licensed_open_data', tos_status: 'open_data', can_store_content: true, can_use_for_outreach: false, notes: 'Use register data for entity enrichment.' },
-        { source_name: 'Company websites', allowed_method: 'limited_website_crawl', tos_status: 'check_per_domain', can_store_content: true, can_use_for_outreach: true, notes: 'Limit to about/contact/careers/jobs and respect robots.' },
-        { source_name: 'Google Places', allowed_method: 'api', tos_status: 'api_terms', can_store_content: 'field_dependent', can_use_for_outreach: true, notes: 'Use FieldMask and comply with Maps Platform policies.' }
+        { source_name: 'Seek', allowed_method: 'job_alert_or_manual_review', tos_status: 'restricted', can_store_content: false, can_use_for_outreach: false, notes: '不做自动爬取；只生成复核入口或处理你授权/收到的数据。' },
+        { source_name: 'Indeed', allowed_method: 'job_alert_manual_or_authorized_access', tos_status: 'review_required', can_store_content: 'source_dependent', can_use_for_outreach: false, notes: '先用提醒邮件/授权数据/人工复核。' },
+        { source_name: 'CareerOne', allowed_method: 'manual_review_or_authorized_access', tos_status: 'review_required', can_store_content: 'source_dependent', can_use_for_outreach: false, notes: '先生成搜索复核入口。' },
+        { source_name: 'Jora', allowed_method: 'manual_review_or_authorized_access', tos_status: 'review_required', can_store_content: 'source_dependent', can_use_for_outreach: false, notes: '先生成搜索复核入口。' }
       ],
-      employers: [
-        { employer_id: 'emp_golden_care', abn: 'DEMO-ABN-001', acn: '', legal_name: 'Golden Care VIC Pty Ltd', trading_names: ['Golden Care'], normalized_name: 'golden care vic', entity_status: 'Active', gst_status: 'Registered', company_type: 'Australian Proprietary Company', registration_date: '2018-04-11', website: 'https://example.com/golden-care', main_phone: '03 7000 0101', main_email: 'careers@goldencare.example', contact_url: 'https://example.com/golden-care/careers', sponsor_seed: true, sponsor_status: 'matched', source_first_seen: now, source_last_checked: now },
-        { employer_id: 'emp_abc_auto', abn: 'DEMO-ABN-002', acn: '', legal_name: 'ABC Auto Regional Pty Ltd', trading_names: ['ABC Auto'], normalized_name: 'abc auto regional', entity_status: 'Active', gst_status: 'Registered', company_type: 'Australian Proprietary Company', registration_date: '2015-09-03', website: 'https://example.com/abc-auto', main_phone: '03 7000 0202', main_email: 'jobs@abcauto.example', contact_url: 'https://example.com/abc-auto/jobs', sponsor_seed: true, sponsor_status: 'matched', source_first_seen: now, source_last_checked: now },
-        { employer_id: 'emp_cbd_tech', abn: 'DEMO-ABN-003', acn: '', legal_name: 'CBD Tech Solutions Pty Ltd', trading_names: ['CBD Tech'], normalized_name: 'cbd tech solutions', entity_status: 'Active', gst_status: 'Registered', company_type: 'Australian Proprietary Company', registration_date: '2020-02-18', website: 'https://example.com/cbd-tech', main_phone: '03 7000 0303', main_email: 'people@cbdtech.example', contact_url: 'https://example.com/cbd-tech/careers', sponsor_seed: false, sponsor_status: 'unknown', source_first_seen: now, source_last_checked: now }
-      ],
-      employer_locations: [
-        { location_id: 'loc_golden_care', employer_id: 'emp_golden_care', address_raw: 'Shepparton VIC 3630', suburb: 'Shepparton', postcode: '3630', state: 'VIC', lat: -36.3805, lng: 145.3987, lga: 'Greater Shepparton', rdv_region: 'Hume', regional_category: 'Regional centres and other regional areas' },
-        { location_id: 'loc_abc_auto', employer_id: 'emp_abc_auto', address_raw: 'Mildura VIC 3500', suburb: 'Mildura', postcode: '3500', state: 'VIC', lat: -34.208, lng: 142.1246, lga: 'Mildura', rdv_region: 'Loddon Mallee', regional_category: 'Regional centres and other regional areas' },
-        { location_id: 'loc_cbd_tech', employer_id: 'emp_cbd_tech', address_raw: 'Melbourne VIC 3000', suburb: 'Melbourne', postcode: '3000', state: 'VIC', lat: -37.8136, lng: 144.9631, lga: 'Melbourne', rdv_region: 'Metro', regional_category: 'Major city' }
-      ],
-      job_ads: [
-        { job_id: 'job_golden_care_pca', source_name: 'Demo alert', source_url: 'https://example.com/golden-care/job/pca', source_type: 'email_alert', employer_id: 'emp_golden_care', title: 'Aged Care Worker', description_text: 'Chinese speaking support worker preferred for aged care clients. Employer sponsored pathway may be considered for the right applicant.', location_text: 'Shepparton VIC', postcode: '3630', salary_text: 'Full-time', posted_date: now, seen_date: now, raw_snippet: 'Chinese speaking preferred. Employer sponsored pathway may be considered.', evidence_hash: stableId('ev', 'golden-care-pca') },
-        { job_id: 'job_abc_auto_diesel', source_name: 'Demo API', source_url: 'https://example.com/abc-auto/job/diesel', source_type: 'api', employer_id: 'emp_abc_auto', title: 'Diesel Motor Mechanic', description_text: '482 visa sponsorship available for an experienced diesel mechanic. Mandarin preferred due to customer base.', location_text: 'Mildura VIC', postcode: '3500', salary_text: '$75,000 - $90,000 full-time', posted_date: now, seen_date: now, raw_snippet: '482 visa sponsorship available. Mandarin preferred.', evidence_hash: stableId('ev', 'abc-auto-diesel') },
-        { job_id: 'job_cbd_tech_dev', source_name: 'Demo search index', source_url: 'https://example.com/cbd-tech/job/dev', source_type: 'search_index', employer_id: 'emp_cbd_tech', title: 'Software Engineer', description_text: 'Bilingual English and Chinese helpful. Applicants must have full working rights. No sponsorship is available.', location_text: 'Melbourne VIC', postcode: '3000', salary_text: '$110,000 full-time', posted_date: now, seen_date: now, raw_snippet: 'Bilingual English and Chinese helpful. No sponsorship is available.', evidence_hash: stableId('ev', 'cbd-tech-dev') }
-      ],
-      contacts: [
-        { contact_id: 'con_golden_care_email', employer_id: 'emp_golden_care', contact_type: 'careers_email', value: 'careers@goldencare.example', role: 'Careers', source_url: 'https://example.com/golden-care/careers', source_context: 'careers page', confidence: 94, is_generic_contact: true, is_personal_contact: false, do_not_contact: false, last_verified: now },
-        { contact_id: 'con_abc_auto_email', employer_id: 'emp_abc_auto', contact_type: 'careers_email', value: 'jobs@abcauto.example', role: 'Jobs', source_url: 'https://example.com/abc-auto/jobs', source_context: 'jobs page', confidence: 92, is_generic_contact: true, is_personal_contact: false, do_not_contact: false, last_verified: now },
-        { contact_id: 'con_cbd_tech_form', employer_id: 'emp_cbd_tech', contact_type: 'contact_form', value: 'https://example.com/cbd-tech/contact', role: 'Contact form', source_url: 'https://example.com/cbd-tech/contact', source_context: 'contact page', confidence: 76, is_generic_contact: true, is_personal_contact: false, do_not_contact: false, last_verified: now }
-      ],
+      employers: [],
+      employer_locations: [],
+      job_ads: [],
+      contacts: [],
       lead_scores: [],
-      activity: [{ activity_id: stableId('act', now), timestamp: now, type: 'system', message: 'GitHub Pages workspace initialized with demo lead cards.' }]
+      activity: [{ activity_id: stableId('act', now), timestamp: now, type: 'system', message: '工作区已初始化。输入地区后点击运行今日雷达。' }]
     };
     return scoreState(state);
   }
@@ -359,7 +524,9 @@
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       try {
-        return JSON.parse(raw);
+        const parsed = JSON.parse(raw);
+        if (!parsed.meta || parsed.meta.version !== '0.2.0-pages') return saveState(createInitialState());
+        return parsed;
       } catch {
         localStorage.removeItem(STORAGE_KEY);
       }
@@ -376,15 +543,15 @@
   }
 
   function upsertEmployer(state, row) {
-    const rawName = row.raw_company_name || row.company || row.company_name || row.name || row.legal_name || '';
+    const rawName = rowValue(row, ['公司名称', 'raw_company_name', 'company', 'company_name', 'name', 'legal_name']);
     if (!rawName.trim()) return null;
 
-    const abn = String(row.abn || row.ABN || '').trim();
+    const abn = String(rowValue(row, ['abn', 'ABN'])).trim();
     const normalized = normalizeName(rawName);
     const key = abn || normalized;
     const employerId = stableId('emp', key);
     const existing = state.employers.find((item) => item.employer_id === employerId || (abn && item.abn === abn));
-    const sponsorSeed = row.sponsor_seed === true || String(row.sponsor_seed || '').toLowerCase() === 'true' || String(row.source || '').toLowerCase().includes('482');
+    const sponsorSeed = row.sponsor_seed === true || String(row.sponsor_seed || '').toLowerCase() === 'true' || String(rowValue(row, ['source', '备注'])).toLowerCase().includes('482');
     const employer = {
       employer_id: existing?.employer_id || employerId,
       abn: abn || existing?.abn || '',
@@ -397,12 +564,12 @@
       company_type: existing?.company_type || '',
       registration_date: existing?.registration_date || '',
       website: row.website || existing?.website || '',
-      main_phone: row.phone || existing?.main_phone || '',
-      main_email: row.email || existing?.main_email || '',
+      main_phone: rowValue(row, ['联系方式', 'phone']) || existing?.main_phone || '',
+      main_email: rowValue(row, ['邮箱', 'email']) || existing?.main_email || '',
       contact_url: row.contact_url || existing?.contact_url || '',
       sponsor_seed: existing?.sponsor_seed || sponsorSeed,
       sponsor_status: existing?.sponsor_status || (sponsorSeed ? 'matched' : 'unknown'),
-      known_occupation: row.occupation || row.known_occupation || existing?.known_occupation || '',
+      known_occupation: rowValue(row, ['招聘岗位（已确认符合CSOL清单要求）', '招聘岗位', 'occupation', 'known_occupation']) || existing?.known_occupation || '',
       source_first_seen: existing?.source_first_seen || todayIso(),
       source_last_checked: todayIso()
     };
@@ -410,17 +577,19 @@
     if (existing) Object.assign(existing, employer);
     else state.employers.push(employer);
 
-    const postcode = row.postcode || row.Postcode || '';
-    const suburb = row.suburb || row.Suburb || '';
+    const address = rowValue(row, ['公司地址', 'address']);
+    const region = rowValue(row, ['所在地区', 'state']);
+    const postcode = row.postcode || row.Postcode || String(address).match(/\b\d{4}\b/)?.[0] || '';
+    const suburb = row.suburb || row.Suburb || String(address).replace(/\b(NSW|VIC|QLD|SA|WA|TAS|ACT|NT)\b|\b\d{4}\b/gi, '').trim();
     if (postcode || suburb) {
       const existingLocation = state.employer_locations.find((item) => item.employer_id === employer.employer_id);
       const location = {
         location_id: existingLocation?.location_id || stableId('loc', `${employer.employer_id}-${postcode}-${suburb}`),
         employer_id: employer.employer_id,
-        address_raw: row.address || [suburb, row.state || 'VIC', postcode].filter(Boolean).join(' '),
-        suburb,
-        postcode,
-        state: row.state || 'VIC',
+      address_raw: address || [suburb, region || 'NSW', postcode].filter(Boolean).join(' '),
+      suburb,
+      postcode,
+      state: region || 'NSW',
         lat: Number(row.lat || existingLocation?.lat || 0),
         lng: Number(row.lng || existingLocation?.lng || 0),
         lga: row.lga || existingLocation?.lga || '',
@@ -431,9 +600,11 @@
       else state.employer_locations.push(location);
     }
 
-    if (row.email || row.phone || row.contact_url || row.website) {
-      const contactValue = row.email || row.contact_url || row.phone || row.website;
-      const contactType = row.email ? 'generic_email' : row.contact_url ? 'contact_form' : row.phone ? 'phone' : 'website';
+    const rowEmail = rowValue(row, ['邮箱', 'email']);
+    const rowPhone = rowValue(row, ['联系方式', 'phone']);
+    if (rowEmail || rowPhone || row.contact_url || row.website) {
+      const contactValue = rowEmail || row.contact_url || rowPhone || row.website;
+      const contactType = rowEmail ? 'generic_email' : row.contact_url ? 'contact_form' : rowPhone ? 'phone' : 'website';
       const contactId = stableId('con', `${employer.employer_id}-${contactType}-${contactValue}`);
       if (!state.contacts.some((item) => item.contact_id === contactId)) {
         state.contacts.push({
@@ -448,7 +619,37 @@
           is_generic_contact: true,
           is_personal_contact: false,
           do_not_contact: false,
-          last_verified: todayIso()
+          last_verified: todayIso(),
+          phone: rowPhone,
+          email: rowEmail
+        });
+      }
+    }
+
+    const jobTitle = rowValue(row, ['招聘岗位（已确认符合CSOL清单要求）', '招聘岗位', 'job_title', 'occupation']);
+    if (jobTitle) {
+      const platform = rowValue(row, ['获取招聘信息平台', 'source_name']) || 'Manual import';
+      const jobId = stableId('job', `${employer.employer_id}-${jobTitle}-${platform}`);
+      if (!state.job_ads.some((item) => item.job_id === jobId)) {
+        state.job_ads.push({
+          job_id: jobId,
+          source_name: platform,
+          source_url: row.source_url || '',
+          source_type: 'import',
+          employer_id: employer.employer_id,
+          title: jobTitle,
+          description_text: `${jobTitle} ${rowValue(row, ['备注', 'notes'])}`,
+          location_text: region || suburb,
+          postcode,
+          salary_text: '',
+          posted_date: rowValue(row, ['搜索日期', 'posted_date']) || todayIso(),
+          seen_date: rowValue(row, ['搜索日期', 'seen_date']) || todayIso(),
+          raw_snippet: rowValue(row, ['备注', 'notes']),
+          evidence_hash: stableId('ev', jobId),
+          anzsco_code: rowValue(row, ['ANZSCO', 'anzsco']),
+          progress: rowValue(row, ['目前进展', 'progress']) || '未联系',
+          notes: rowValue(row, ['备注', 'notes']),
+          ad_screenshot: rowValue(row, ['广告截图', 'ad_screenshot'])
         });
       }
     }
@@ -502,11 +703,14 @@
     let message = '';
 
     if (action === 'daily-run') {
+      const region = payload.region || state.meta.search_region || 'NSW';
+      const sources = payload.sources || state.meta.search_sources || SOURCE_PLATFORMS;
+      const generated = createPlatformCandidates(state, region, sources);
       const discovered = discoverSeedJobs(state);
       const enriched = enrichCompanies(state);
       state = scoreState(state);
       state.meta.last_daily_run_at = todayIso();
-      message = `Daily radar completed: ${discovered} seed jobs created, ${enriched} companies enriched, ${state.lead_scores.length} leads scored.`;
+      message = `今日雷达完成：${region} / ${sources.join(', ')}，新增 ${generated} 条平台候选，${discovered} 条种子任务，当前共 ${state.lead_scores.length} 条。`;
       addActivity(state, 'daily_run', message);
     } else if (action === 'sync-seeds') {
       for (const employer of state.employers) {
@@ -565,22 +769,19 @@
 
   function exportLeadsCsv(state) {
     const headers = [
-      ['priority_bucket', (row) => row.lead.priority_bucket],
-      ['final_score', (row) => row.lead.final_score],
-      ['company', (row) => row.employer.legal_name],
-      ['abn', (row) => row.employer.abn],
-      ['suburb', (row) => row.location.suburb],
-      ['postcode', (row) => row.location.postcode],
-      ['job_title', (row) => row.job.title],
-      ['sponsorship_level', (row) => row.lead.sponsorship_level],
-      ['language_evidence', (row) => (row.lead.evidence.language || []).join(' | ')],
-      ['sponsorship_evidence', (row) => (row.lead.evidence.sponsorship || []).join(' | ')],
-      ['occupation', (row) => row.lead.occupation_match?.title || ''],
-      ['contact_type', (row) => row.bestContact.contact_type],
-      ['contact', (row) => row.bestContact.value],
-      ['source_url', (row) => row.job.source_url],
-      ['review_status', (row) => row.lead.review_status],
-      ['next_action', (row) => row.lead.next_action]
+      ['公司名称', (row) => row.employer.legal_name],
+      ['搜索日期', (row) => (row.job.seen_date || '').slice(0, 10)],
+      ['所在地区', (row) => row.location.state || row.location.suburb],
+      ['公司地址', (row) => row.location.address_raw],
+      ['ANZSCO', (row) => row.job.anzsco_code || row.lead.occupation_match?.anzsco_code || ''],
+      ['招聘岗位（已确认符合CSOL清单要求）', (row) => row.job.title],
+      ['获取招聘信息平台', (row) => row.job.source_name],
+      ['目前进展', (row) => row.lead.review_status === 'new' ? (row.job.progress || '未联系') : row.lead.review_status],
+      ['备注', (row) => row.job.notes || row.job.raw_snippet || ''],
+      ['联系方式', (row) => row.bestContact.phone || row.employer.main_phone || ''],
+      ['邮箱', (row) => row.bestContact.email || row.employer.main_email || row.bestContact.value || ''],
+      ['广告截图', (row) => row.job.ad_screenshot || ''],
+      ['复核链接', (row) => row.job.source_url]
     ];
 
     const rows = state.lead_scores.map((lead) => {
